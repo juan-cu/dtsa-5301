@@ -1,0 +1,142 @@
+---
+title: "Week05-NYShootings"
+author: "Juan Pelaez"
+date: "6/20/2021"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=TRUE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(lubridate)
+```
+
+## NY Shooting Analysis. 
+New York City has many shootings incidents every year, I want to identify if there is any relation between the races of the shooter and the victims, mainly I would like to understand if those events are motivated by hate or if there are some conflicts happening in the shadows between races that translate into shooting events. To have a better sense of any result, I am including a relation with Population Distribution by Boroughts. 
+
+### Data Sources
+
+#### Shooting Incidents Data Source
+This data set list is a breakdown of every shooting incident that occurred in NYC going back to 2006 through the end of the previous calendar year. Each record represents a shooting incident in NYC and includes information about the event, the location and time of occurrence. In addition, information related to suspect and victim demographics is also included. 
+
+https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD
+
+#### Demographic Information Data Source
+From Census.gov, QuickFacts for demographic information as age and races distribution on Bronx County (Bronx Borough), New York; Kings County (Brooklyn Borough), New York; New York County (Manhattan Borough), New York; Queens County (Queens Borough), New York; Richmond County (Staten Island Borough), New York
+
+https://www.census.gov/quickfacts/fact/table/newyorkcitynewyork,bronxcountybronxboroughnewyork,kingscountybrooklynboroughnewyork,newyorkcountymanhattanboroughnewyork,queenscountyqueensboroughnewyork,richmondcountystatenislandboroughnewyork/PST045219
+
+```{r get_data, include=TRUE}
+shootings_ny <- "https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD"
+
+demographics_ny <- "https://www.census.gov/quickfacts/fact/csv/newyorkcitynewyork,bronxcountybronxboroughnewyork,kingscountybrooklynboroughnewyork,newyorkcountymanhattanboroughnewyork,queenscountyqueensboroughnewyork,richmondcountystatenislandboroughnewyork/PST045219"
+```
+
+```{r import_data, include=TRUE}
+raw_shootings <- read_csv(shootings_ny)
+raw_demographics <- read_csv(demographics_ny)
+```
+
+### Remove Extra Columns and Change Data Types. 
+From the Shooting DataSource, I am selection only the needed columns, Boroughts (Where), Occur_date (When) and Races from Perpetrator and Victims (who), also Census.gov has columns name that are not friendly for R, here we change those names and select only the actual columns needed for the Analysis. 
+
+```{r remove_columns, include=TRUE}
+clean_shootings <-raw_shootings %>%
+  select(OCCUR_DATE,BORO,PERP_RACE,VIC_RACE)
+clean_demographics <- raw_demographics %>%
+  rename(Bronx = `Bronx County (Bronx Borough), New York`,
+         Brooklin = `Kings County (Brooklyn Borough), New York`,
+         Queens = `Queens County (Queens Borough), New York`,
+         State_Island = `Richmond County (Staten Island Borough), New York`,
+         Manhattan = `New York County (Manhattan Borough), New York`)%>%
+  select(`Bronx`, `Brooklin`, `Queens`, `State_Island`, `Manhattan`, `Fact`)
+```
+
+```{r fix_data_types, include=TRUE}
+clean_shootings <-clean_shootings %>%
+  mutate(OCCUR_DATE = mdy(OCCUR_DATE))
+```
+
+### Show Initial Data Summary for NY Shootings.
+
+```{r summary_raw_data, include=TRUE}
+summary(clean_shootings)
+```
+
+### Remove Rows without data on the Shooting File
+
+```{r filter_raw_data, include=TRUE}
+clean_shootings <-clean_shootings %>%
+  filter(VIC_RACE!="NA"& PERP_RACE!="NA" )
+```
+
+### Show Summary for NY Shootings after filtering. 
+You will notice the number of cases with data on both perp_race and vic_race have been reduced to 15,143 from 23.568. There are multiple explanations to this, however one important reason for this is that many of the shootings have no perpetrator captured. Having information on both the perpetrator and the victims helps to solve the question that I am analyzing 
+
+```{r summary_clean_data, include=TRUE}
+summary(clean_shootings)
+```
+
+On this analysis, I am removing additional rows from the Bureau Of Census Data, Only Boroughs Population and percentage are left to join the Analysis. 
+
+```{r filter_demographics, include=TRUE}
+clean_demographics <- clean_demographics %>%
+      filter(Fact == "Population estimates, July 1, 2019,  (V2019)" |
+              Fact == "White alone, percent" |  
+              Fact == "Black or African American alone, percent" |
+              Fact == "American Indian and Alaska Native alone, percent" |
+              Fact == "Native Hawaiian and Other Pacific Islander alone, percent" |
+              Fact == "Hispanic or Latino, percent")
+```
+
+## Data Results
+With these Data sets lets see some visual of the results. 
+
+### Borough Participation
+First, Shootings totals by Borough 
+
+```{r summarize_boros, include=TRUE}
+data_boro <- clean_shootings %>%
+     select(OCCUR_DATE, BORO) %>%
+     count(BORO) %>%
+     rename(events = n)
+```
+
+```{r plot_boros, include=TRUE}
+ggplot(data_boro, aes(x=BORO, y = events, color = BORO)) + geom_col()
+```
+
+### Races Distributution and Participation on Shootings
+Now, let's see if there are some insights on the impact on races on the shooting using the perpetrator and victims races. 
+
+```{r summarize_races, include=TRUE}
+shooting_per_races<-clean_shootings%>%
+    group_by(VIC_RACE, PERP_RACE)%>% 
+    summarise(count=n())
+```
+
+```{r plot_races, include=TRUE}
+ggplot() + geom_point(data = shooting_per_races, aes(x = VIC_RACE, y = PERP_RACE, color=count ))+
+          theme(legend.position = "bottom",
+          axis.text.x = element_text(angle = 90))+
+          labs(title = "Total Number of Shooting per Perpetrator Race vs Victim Race in New York", y="Perpetrator Race", x="Victim Race")
+```
+
+## Conclusion
+
+This very simple exercise is using Data from NY shootings and it shows that there is no a single race or single borough where a predominate race is responsible for the shooting incidents, if we were to answer the questions who is shooting and where, the answer will be, everybody and everywhere. Sadly, the number of incidents where perpetrator and victims are both black are extremely high in relation with other groups, additional research needs to be done to understand better if this numbers are product of errors on the process of collecting data, or if there are a systemic problems on those populations that ended being reflected on the  number of shootings affecting those communities.  For a final answer to the original question, data collected from at least a decade shows that shootings on NY affects every race as victims but also as perpetrators, my initial conclusion would be that there is not a clear pattern of racism as trigger of those events, or if any, it is not isolated to a particular target o from a particular origin. 
+
+### Bias Analisys.
+
+As Latino person and with the recent events happening around America, BLM and the Inclusion and Diversity conversations going on, I can identify that I have a Bias and curiosity to understand if those shootings events were somehow motivate by hate and against a particular community. 
+
+
+```{r sessionInfo, echo=TRUE}
+sessionInfo()
+```
+
+## Additional Libraries
+tidyverse
+lubridate
